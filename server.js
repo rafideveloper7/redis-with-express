@@ -1,25 +1,28 @@
 import express from "express";
 import dotenv from "dotenv";
 import { connectRedis } from "./config/redis.js";
+import serverless from "serverless-http";
+import dataRoutes from "./routes/dataRoutes.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-import serverless from "serverless-http";
 // Your routes
-import dataRoutes from "./routes/dataRoutes.js";
-export const serverlessHandler = serverless(handler);
 app.use("/api", dataRoutes);
 
 // Redis connection
 let redisConnected = false;
 const initRedis = async () => {
   if (!redisConnected) {
-    await connectRedis();
-    redisConnected = true;
-    console.log("Redis connected");
+    try {
+      await connectRedis();
+      redisConnected = true;
+      console.log("Redis connected");
+    } catch (err) {
+      console.error("Redis connection failed:", err);
+    }
   }
 };
 
@@ -28,18 +31,17 @@ const isServerless = !!process.env.VERCEL;
 
 if (isServerless) {
   // SERVERLESS HANDLER FOR VERCEL
-
   const handler = async (req, res) => {
     try {
       await initRedis();
       return app(req, res);
     } catch (err) {
-      console.error("Redis error:", err);
+      console.error("Handler error:", err);
       res.status(500).send("Internal Server Error");
     }
   };
 
-
+  // THIS IS THE FIX - Export the handler
 } else {
   // LOCAL DEVELOPMENT
   const PORT = process.env.PORT || 5000;
@@ -54,6 +56,7 @@ if (isServerless) {
       process.exit(1);
     }
   };
-
+  
   start();
 }
+export default handler;

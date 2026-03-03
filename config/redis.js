@@ -1,6 +1,4 @@
-
 import { createClient } from "redis";
-
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -14,7 +12,6 @@ redisClient.on("error", (err) => {
 });
 
 export const connectRedis = async () => {
-
   // Agar already connected nahi hai tab connect karo
   if (!redisClient.isOpen) {
     await redisClient.connect();
