@@ -1,62 +1,77 @@
+// server.js - THE COMPLETE FIX
 import express from "express";
 import dotenv from "dotenv";
-import { connectRedis } from "./config/redis.js";
+import { createClient } from "redis";
 import serverless from "serverless-http";
-import dataRoutes from "./routes/dataRoutes.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
 
-// Your routes
-app.use("/api", dataRoutes);
+// HEALTH CHECK ENDPOINT (always works)
+app.get("/health", (req, res) => {
+  res.json({ 
+    status: "alive", 
+    time: new Date().toISOString(),
+    redis: global.redisClient ? "configured" : "not configured"
+  });
+});
 
-// Redis connection
-let redisConnected = false;
-const initRedis = async () => {
-  if (!redisConnected) {
+// SIMPLE TEST ENDPOINT
+app.get("/test", (req, res) => {
+  res.json({ message: "API is working!" });
+});
+
+// LAZY REDIS CONNECTION - only connects when needed
+async function getRedisClient() {
+  if (!global.redisClient) {
     try {
-      await connectRedis();
-      redisConnected = true;
+      const client = createClient({ 
+        url: process.env.REDIS_URL,
+        socket: {
+          reconnectStrategy: false, // Don't retry in serverless
+          connectTimeout: 5000 // 5 second timeout
+        }
+      });
+      
+      client.on('error', (err) => {
+        console.error("Redis client error:", err.message);
+        global.redisClient = null;
+      });
+      
+      await client.connect();
+      global.redisClient = client;
       console.log("Redis connected");
     } catch (err) {
-      console.error("Redis connection failed:", err);
+      console.error("Redis connection failed:", err.message);
+      global.redisClient = null;
+      throw err; // Re-throw so caller knows
     }
   }
-};
-
-// Check if running on Vercel serverless
-const isServerless = !!process.env.VERCEL;
-
-if (isServerless) {
-  // SERVERLESS HANDLER FOR VERCEL
-  const handler = async (req, res) => {
-    try {
-      await initRedis();
-      return app(req, res);
-    } catch (err) {
-      console.error("Handler error:", err);
-      res.status(500).send("Internal Server Error");
-    }
-  };
-
-  // THIS IS THE FIX - Export the handler
-} else {
-  // LOCAL DEVELOPMENT
-  const PORT = process.env.PORT || 5000;
-  const start = async () => {
-    try {
-      await initRedis();
-      app.listen(PORT, () => {
-        console.log(`Server running locally on http://localhost:${PORT}`);
-      });
-    } catch (err) {
-      console.error("Startup error:", err);
-      process.exit(1);
-    }
-  };
-  
-  start();
+  return global.redisClient;
 }
-export default handler;
+
+// YOUR ACTUAL ROUTES - with Redis error handling
+app.get("/api/data/:key", async (req, res) => {
+  try {
+    const client = await getRedisClient().catch(() => null);
+    
+    if (!client) {
+      return res.status(503).json({ 
+        error: "Redis unavailable",
+        note: "Try again later"
+      });
+    }
+    
+    const value = await client.get(req.params.key);
+    res.json({ key: req.params.key, value });
+    
+  } catch (error) {
+    console.error("Route error:", error.message);
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
+// EXPORT for Vercel - THIS IS CRITICAL
+export default serverless(app);

@@ -1,0 +1,14 @@
+{
+  "projectId": "your-project-id",
+  "orgId": "your-team-id",
+  "settings": {
+    "framework": null,
+    "devCommand": null,
+    "installCommand": "npm install",
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "18.x"
+  }
+}
