@@ -10,21 +10,23 @@ const app = express();
 app.use(express.json());
 app.use("/api", dataRoutes);
 
-let isRedisConnected = false;
-
+// Ensure Redis connects once per cold start
+let redisConnected = false;
 const initRedis = async () => {
-  if (!isRedisConnected) {
+  if (!redisConnected) {
     await connectRedis();
-    isRedisConnected = true;
+    redisConnected = true;
+    console.log("Redis connected");
   }
 };
 
+// The serverless handler Vercel expects
 const handler = async (req, res) => {
   try {
     await initRedis();
     return app(req, res);
-  } catch (error) {
-    console.error("Redis connection error:", error);
+  } catch (err) {
+    console.error("Redis connection error:", err);
     res.status(500).send("Internal Server Error");
   }
 };
